@@ -1,12 +1,16 @@
-from flask import render_template, flash, redirect, session, url_for, request, g
+from flask import render_template, flash, redirect, url_for, request, g
 from flask.ext.login import login_user, logout_user, current_user, login_required
-from courseme import app, db, lm, hash_string, lectures
+from flask.ext import restful
+from flask_restful import marshal
+from flask_restless import ProcessingException
+from courseme import app, db, lm, hash_string, lectures, api_manager
 import forms
 from models import User, ROLE_USER, ROLE_ADMIN, Objective, SchemeOfWork, UserObjective, Module, UserModule, Institution, \
     Group, Message, Question, Subject, Topic
 from datetime import datetime
 import json, operator
 # import pdb; pdb.set_trace()        #DJG - remove
+
 
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -130,10 +134,10 @@ def objectives_admin():
     title = "CourseMe - Objectives"
     objectiveform = forms.EditObjective()
     objectiveform.edit_objective_topic.choices = Topic.TopicChoices(
-        g.user)  #DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
+        g.user)  # DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
     objectives = g.user.visible_objectives().all()
     objectives.sort(
-        key=operator.methodcaller("score"))  #DJG - isn't there a way of doing this within the order_by of the query
+        key=operator.methodcaller("score"))  # DJG - isn't there a way of doing this within the order_by of the query
     return render_template('objectivesadmin.html',
                            title=title,
                            objectiveform=objectiveform,
@@ -155,7 +159,7 @@ def objectives(profile_id, scheme_id=0):
         title = "CourseMe - Objectives"
         objectiveform = forms.EditObjective()
         objectiveform.edit_objective_topic.choices = Topic.TopicChoices(
-            g.user)  #DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
+            g.user)  # DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
         objectives = []
         if scheme_id == 0:
             objectives = g.user.visible_objectives().all()
@@ -167,7 +171,8 @@ def objectives(profile_id, scheme_id=0):
                 flash("Scheme of work not found")
                 return redirect(url_for('schemes'))
         objectives.sort(
-            key=operator.methodcaller("score"))  #DJG - isn't there a way of doing this within the order_by of the query
+            key=operator.methodcaller(
+                "score"))  # DJG - isn't there a way of doing this within the order_by of the query
         return render_template(
             'objectives.html',
             title=title,
@@ -208,7 +213,7 @@ def objectives_group(group_id, scheme_id=0, name_display=1):
             flash("Scheme of work not found")
             return redirect(url_for('schemes'))
     objectives.sort(
-        key=operator.methodcaller("score"))  #DJG - isn't there a way of doing this within the order_by of the query
+        key=operator.methodcaller("score"))  # DJG - isn't there a way of doing this within the order_by of the query
     return render_template(
         'objectives_group.html',
         title=title,
@@ -223,14 +228,14 @@ def objectives_group(group_id, scheme_id=0, name_display=1):
 def objective_add_update():
     form = forms.EditObjective()
     form.edit_objective_topic.choices = Topic.TopicChoices(
-        g.user)  #DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
+        g.user)  # DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
     form.edit_objective_prerequisites.choices = [(i, i) for i in form.edit_objective_prerequisites.data]
-    #import pdb; pdb.set_trace()
-    #form will be the fields of the html form with the csrf
-    #request.form will be the data posted back through the ajax request
-    #DJG - don't know why the request.form object seems to have a second empty edit_objective_id attribute
-    #if request.method == 'POST':
-    #    form.dynamic_list_select.choices = g.user.visible_objectives()     #DJG - this was part of an attempt to use a wtf selectmultiplefield to capture the prerequisite list in the hope this would be passed through the post request as an array of strings and so avoid using the comma delimited approach here. The coices need to be a list of tuples so this isn't in the right format.
+    # import pdb; pdb.set_trace()
+    # form will be the fields of the html form with the csrf
+    # request.form will be the data posted back through the ajax request
+    # DJG - don't know why the request.form object seems to have a second empty edit_objective_id attribute
+    # if request.method == 'POST':
+    # form.dynamic_list_select.choices = g.user.visible_objectives()     #DJG - this was part of an attempt to use a wtf selectmultiplefield to capture the prerequisite list in the hope this would be passed through the post request as an array of strings and so avoid using the comma delimited approach here. The coices need to be a list of tuples so this isn't in the right format.
     if form.validate():
         obj_id = form.edit_objective_id.data
         name = form.edit_objective_name.data
@@ -328,10 +333,10 @@ def objective_add_update():
 
 @app.route('/objective-delete')
 def objective_delete():
-    #DJG - need to check user has authority to delete objective
+    # DJG - need to check user has authority to delete objective
     objective = Objective.query.get(request.args.get("objective_id"))
     db.session.delete(
-        objective)  #DJG - secondary table should be updated automatically because of relationship definintion
+        objective)  # DJG - secondary table should be updated automatically because of relationship definintion
     db.session.commit()
     return ""
 
@@ -345,7 +350,7 @@ def objective_get():
 @app.route('/objective-assess/<int:profile_id>/<int:objective_id>')
 @login_required
 def objective_assess(profile_id, objective_id):
-    objective = Objective.query.get(objective_id)  #DJG - may restrict search to just some set of visisble objectives
+    objective = Objective.query.get(objective_id)  # DJG - may restrict search to just some set of visisble objectives
     if not objective:
         flash("This objective does not exist")
         return redirect(url_for('objectives', id=g.user.id))
@@ -359,23 +364,23 @@ def objective_assess(profile_id, objective_id):
     else:
         userobjective = UserObjective.FindOrCreate(profile_id, g.user.id, objective_id)
         userobjective.assess()
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         return json.dumps({
             'assessed_display_class': userobjective.assessed_display_class(),
             'assessed': userobjective.completed
         })
 
 
-#modules
+# modules
 @app.route('/editmodule/<int:id>', methods=["GET", "POST"])
 @login_required
 def editmodule(id=0):
     title = 'CourseMe - Edit Module'
-    moduleform = forms.EditModule()  #DJG - need the arguement because using validate not validate_on_submit?
-    #import pdb; pdb.set_trace()            #DJG - remove
+    moduleform = forms.EditModule()  # DJG - need the arguement because using validate not validate_on_submit?
+    # import pdb; pdb.set_trace()            #DJG - remove
     objectiveform = forms.EditObjective()
     objectiveform.edit_objective_topic.choices = Topic.TopicChoices(
-        g.user)  #DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
+        g.user)  # DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
     module_objectives = []
     module = None
     if not g.user.subject:
@@ -397,7 +402,7 @@ def editmodule(id=0):
                 form_header = "Edit " + material_type + ":"
                 material_source = module.material_source
                 material_path = module.material_path if material_source == 'youtube' else ''
-                #flash(material_path)
+                # flash(material_path)
                 moduleform = forms.EditModule(
                     name=module.name,
                     description=module.description,
@@ -418,7 +423,7 @@ def editmodule(id=0):
     if request.method == 'GET':
         objectives = g.user.visible_objectives().all()
         objectives.sort(key=operator.methodcaller(
-            "score"))  #DJG - isn't there a way of doing this within the order_by of the query
+            "score"))  # DJG - isn't there a way of doing this within the order_by of the query
 
         return render_template('editmodule.html',
                                title=title,
@@ -431,12 +436,12 @@ def editmodule(id=0):
                                objectiveform=objectiveform)
 
     if request.method == 'POST':
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         moduleform.module_objectives.choices = [(i, i) for i in moduleform.module_objectives.data]
-        #Both material upload types are required in the moduleform definition so need to remove the redundant field now to prevent validation errors
+        # Both material upload types are required in the moduleform definition so need to remove the redundant field now to prevent validation errors
 
-        #if material_source == 'upload':           #DJG - need a way to define the global list of sources so value means the same thing as database definitions 
-        #    del moduleform.material_youtube
+        # if material_source == 'upload':           #DJG - need a way to define the global list of sources so value means the same thing as database definitions
+        # del moduleform.material_youtube
         #elif material_source == 'youtube':
         #    del moduleform.material_upload              
         #if moduleform.material_type.data == 'course':
@@ -446,8 +451,7 @@ def editmodule(id=0):
         if moduleform.validate():
             objectives = []
             course_modules = []
-            result = {}
-            result['savedsuccess'] = False
+            result = {'savedsuccess': False}
             proceed = False
             material_type = module.material_type if id > 0 else moduleform.material_type.data
             material_source = ""
@@ -537,9 +541,55 @@ def editmodule(id=0):
             return json.dumps(moduleform.errors, separators=(',', ':'))
 
 
+# # Module api
+# class ModuleView(restful.Resource):
+# # @marshal_with(resource_fields)
+# def get(self, id):
+#         module = Module.query.filter_by(id=id).one()
+#         return {'module': marshal(module, Module.api_fields())}
+#
+#
+# api.add_resource(ModuleView, '/api/v1/modules/<int:id>', endpoint='api_module')
+
+def check_authenticated(*args, **kw):
+    if not current_user.is_authenticated():
+        raise ProcessingException(description='Not authenticated!', code=401)
+
+
+def check_access_module(instance_id=None, **kw):
+    module = Module.query.get(instance_id)
+    if current_user != module.author:
+        raise ProcessingException(description='No access!', code=401)
+
+
+def pre_get_single_module(*args, **kw):
+    pass
+
+
+def pre_patch_single_module(instance_id=None, data=None, **kw):
+    print data
+    ProcessingException(description='Test Abort!', code=401)
+
+
+def pre_delete_module(*args, **kw):
+    pass
+
+
+api_manager.create_api(
+    Module,
+    methods=['Get', 'POST', 'PUT', 'DELETE'],
+    url_prefix='/api/v1',
+    preprocessors={
+        'GET_SINGLE': [check_authenticated, check_access_module, pre_get_single_module],
+        'PATCH_SINGLE': [check_authenticated, check_access_module, pre_patch_single_module],
+        'DELETE': [check_authenticated, check_access_module, pre_delete_module]
+    }
+)
+
+
 @app.route('/module/<int:id>')
 @login_required
-#DJG - Login should not be required just temporary to stop user_module tracking breaking - need guest user
+# DJG - Login should not be required just temporary to stop user_module tracking breaking - need guest user
 def module(id):
     title = "CourseMe - Module"
     module = Module.query.get_or_404(id)
@@ -580,14 +630,14 @@ def voteclick(id):
     usermodule = UserModule.FindOrCreate(g.user.id, module.id)
 
     newVote = int(request.args.get("vote"))
-    module.votes = module.votes - usermodule.vote + newVote  #DJG - Almost certainly a better way
+    module.votes = module.votes - usermodule.vote + newVote  # DJG - Almost certainly a better way
     usermodule.vote = newVote
 
     db.session.add(usermodule)
     db.session.add(module)
     db.session.commit()
 
-    return ""  #DJG - What is best return value when I don't care about the return result? Only thing I found that worked
+    return ""  # DJG - What is best return value when I don't care about the return result? Only thing I found that worked
 
 
 @app.route('/add-module-to-course/<int:module_id>/<int:course_id>')
@@ -608,7 +658,7 @@ def add_module_to_course(module_id, course_id):
     else:
         course = Module.query.get(course_id)
     module = Module.query.get(module_id)
-    #import pdb; pdb.set_trace()        #DJG - remove
+    # import pdb; pdb.set_trace()        #DJG - remove
     if module:
         if module.material_type == "Course":
             flash('You cannot embed a course within another course')
@@ -669,7 +719,7 @@ def delete_module(id):
             module.delete()
             result['savedsuccess'] = True
         else:
-            flash("You are not authorised to delete this " + course.material_type)
+            flash("You are not authorised to delete this " + module.material_type)
     else:
         flash('No Module identified with id ' + id)
 
@@ -740,13 +790,13 @@ def group_get(id):
 def group_save():
     form = forms.EditGroup()
     form.edit_group_members.choices = [(i, i) for i in
-                                       form.edit_group_members.data]  #DJG - could put some actual validation here
+                                       form.edit_group_members.data]  # DJG - could put some actual validation here
 
     if form.validate():
         result = {}
         result['savedsuccess'] = False
         id = int(form.edit_group_id.data)
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         group_members = [User.user_by_email(e) for e in form.edit_group_members.data]
         if id > 0:
             group = Group.query.get(id)
@@ -832,13 +882,13 @@ def scheme_get(id):
 def scheme_save():
     form = forms.EditScheme()
     form.edit_scheme_objectives.choices = [(i, i) for i in
-                                           form.edit_scheme_objectives.data]  #DJG - could put some actual validation here
+                                           form.edit_scheme_objectives.data]  # DJG - could put some actual validation here
 
     if form.validate():
         result = {}
         result['savedsuccess'] = False
         id = int(form.edit_scheme_id.data)
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         scheme_objectives = [Objective.query.filter_by(name=o).one() for o in form.edit_scheme_objectives.data]
         if id > 0:
             scheme = SchemeOfWork.query.get(id)
@@ -926,9 +976,9 @@ def send_message():
     form = forms.SendMessage()
     result = {}
     result['savedsuccess'] = False
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if form.validate():
-        #print 'message form submitted'
+        # print 'message form submitted'
         #import pdb; pdb.set_trace()
         recommended_material = Module.query.get(form.recommended_material.data)
         if recommended_material:
@@ -1004,10 +1054,10 @@ def edit_question(id=0):
     form = forms.EditQuestion()
     objectiveform = forms.EditObjective()
     objectiveform.edit_objective_topic.choices = Topic.TopicChoices(
-        g.user)  #DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
+        g.user)  # DJG - need to include this extra line everywhere to populate the objective topic choices. Can't do this in forms or models directy as no knowledge of tyhe session variable and so user in those places?
     question_objectives = []
     question = None
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     form_header = "Create new question:"
     if id > 0:
         question = Question.query.get(id)
@@ -1033,7 +1083,7 @@ def edit_question(id=0):
     if request.method == 'GET':
         objectives = g.user.visible_objectives().all()
         objectives.sort(key=operator.methodcaller(
-            "score"))  #DJG - isn't there a way of doing this within the order_by of the query
+            "score"))  # DJG - isn't there a way of doing this within the order_by of the query
 
         return render_template('edit_question.html',
                                title=title,
@@ -1045,7 +1095,7 @@ def edit_question(id=0):
                                edit_id=id)
 
     if request.method == 'POST':
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         form.question_objectives.choices = [(i, i) for i in form.question_objectives.data]
 
         if form.validate():
@@ -1130,11 +1180,11 @@ def questions():
     if g.user.is_authenticated():
         questions = g.user.visible_questions().all()
         catalogue = [question.as_dict(g.user) for question in
-                     questions]  #DJG - confused over best way to do this http://stackoverflow.com/questions/1958219/convert-sqlalchemy-row-object-to-python-dict
+                     questions]  # DJG - confused over best way to do this http://stackoverflow.com/questions/1958219/convert-sqlalchemy-row-object-to-python-dict
     else:
         questions = Question.query.all()
         catalogue = [question.as_dict() for question in
-                     questions]  #DJG - confused over best way to do this http://stackoverflow.com/questions/1958219/convert-sqlalchemy-row-object-to-python-dict
+                     questions]  # DJG - confused over best way to do this http://stackoverflow.com/questions/1958219/convert-sqlalchemy-row-object-to-python-dict
 
     return render_template('questions.html',
                            title=title,
