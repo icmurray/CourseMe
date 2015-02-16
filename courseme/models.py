@@ -384,7 +384,11 @@ class User(db.Model):
 
     @staticmethod  # DJG - suspect this should be taken out of the user class as the user is passed to the template and so the server side through g.user - may therefore give access to the client about admin users?
     def admin_users():
-        return User.query.filter(User.role == ROLE_ADMIN).all()
+        return User.admin_usersQ().all()
+
+    @staticmethod
+    def admin_usersQ():
+        return User.query.filter(User.role == ROLE_ADMIN)
 
     @staticmethod
     def main_admin_user():

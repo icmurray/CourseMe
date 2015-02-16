@@ -153,6 +153,26 @@ def objective_add_update():
     #if request.method == 'POST':
     #    form.dynamic_list_select.choices = g.user.visible_objectives()     #DJG - this was part of an attempt to use a wtf selectmultiplefield to capture the prerequisite list in the hope this would be passed through the post request as an array of strings and so avoid using the comma delimited approach here. The coices need to be a list of tuples so this isn't in the right format.
     if form.validate():
+
+        import courseme.main.services as services
+        objective_service = services.ObjectiveService(services.cm())
+
+        objective_id = form.edit_objective_id.data
+        if objective_id:
+            objective = objective_service.update(
+                objective_id=objective_id,
+                name=form.edit_objective_name.data,
+                prerequisite_names=form.edit_objective_prerequisites.data,
+                topic_id=form.edit_objective_topic.data)
+        else:
+            objective = objective_service.create(
+                name=form.edit_objective_name.data,
+                subject_id=g.user.subject_id,
+                topic_id=form.edit_objective_topic.data,
+                prerequisite_names=form.edit_objective_prerequisites.data)
+
+        return json.dumps({"savedsuccess": True})
+
         obj_id = form.edit_objective_id.data
         name = form.edit_objective_name.data
         topic = Topic.query.get(form.edit_objective_topic.data)
